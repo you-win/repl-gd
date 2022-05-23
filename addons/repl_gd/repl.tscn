@@ -73,6 +73,7 @@ margin_bottom = 556.0
 
 [node name="List" type="VBoxContainer" parent="Body/State/Variables"]
 margin_right = 410.0
+margin_bottom = 14.0
 size_flags_horizontal = 3
 
 [node name="Label" type="Label" parent="Body/State/Variables/List"]
@@ -96,9 +97,23 @@ readonly = true
 syntax_highlighting = true
 show_line_numbers = true
 
-[node name="Input" type="TextEdit" parent="Body/IO"]
+[node name="Inputs" type="HBoxContainer" parent="Body/IO"]
 margin_top = 309.0
 margin_right = 582.0
 margin_bottom = 556.0
+size_flags_horizontal = 3
+size_flags_vertical = 3
+
+[node name="Input" type="TextEdit" parent="Body/IO/Inputs"]
+margin_right = 535.0
+margin_bottom = 247.0
+size_flags_horizontal = 3
+size_flags_vertical = 3
 syntax_highlighting = true
 show_line_numbers = true
+
+[node name="Send" type="Button" parent="Body/IO/Inputs"]
+margin_left = 539.0
+margin_right = 582.0
+margin_bottom = 247.0
+text = "Send"

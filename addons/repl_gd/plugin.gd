@@ -15,9 +15,11 @@ func _exit_tree():
 		repl.queue_free()
 
 func _inject_tool(node: Node) -> bool:
-	var script: Script = node.get_script()
+	var script: Script = node.get_script().duplicate()
 	script.source_code = "tool\n%s" % script.source_code
 	if script.reload(false) != OK:
 		return false
+	
+	node.set_script(script)
 	
 	return true
