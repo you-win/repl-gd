@@ -6,8 +6,11 @@ class Env:
 	const BUILTIN_VARS := {}
 	
 	## Variables to be injected into the script on each run
-	## Variable name: String -> Variant
+	## @type: Dictionary<String, Variant>
 	var variables := {}
+	## User-defined functions to be injected into the script on each run
+	## @type: Dictionary<String, String>
+	var functions := {}
 	## The scene tree to use in the script on each run
 	var scene_tree: SceneTree
 	
@@ -95,6 +98,9 @@ class Env:
 		
 		#endregion
 		
+		for val in functions.values():
+			ae.add_raw(val)
+		
 		# Must be done _before_ compiling the script
 		for dict in [BUILTIN_VARS, variables]:
 			for key in dict.keys():
@@ -129,6 +135,10 @@ const INITIAL_PAGE := "General"
 
 onready var output := $Body/IO/Output as TextEdit
 onready var input := $Body/IO/Inputs/Input as TextEdit
+
+const MAX_HISTORY: int = 100
+var history_pointer: int = 0
+var history := []
 
 #-----------------------------------------------------------------------------#
 # Builtin functions                                                           #
@@ -237,13 +247,31 @@ func _on_input_gui_input(ie: InputEvent) -> void:
 	if not ie.pressed:
 		return
 	
-	if ie.control and ie.scancode == KEY_ENTER:
-		input.text = input.text.trim_suffix("\n")
-		_on_input_submit()
+	if ie.control:
+		match ie.scancode:
+			KEY_ENTER: # Submit code
+				input.text = input.text.trim_suffix("\n")
+				_on_input_submit()
+			KEY_UP: # Previous history
+				history_pointer -= 1
+				if history_pointer >= 0:
+					_set_from_history()
+				else:
+					history_pointer += 1
+			KEY_DOWN: # Next history
+				history_pointer += 1
+				if history_pointer < history.size():
+					_set_from_history()
+				elif history_pointer == history.size():
+					input.text = ""
+				else:
+					history_pointer -= 1
 
 func _on_input_submit() -> void:
 	if input.text.strip_edges().empty():
 		return
+	
+	_add_history(input.text)
 	
 	_add_output(input.text)
 	
@@ -264,13 +292,31 @@ func _on_input_submit() -> void:
 				_add_output("REPL state reset")
 				_clear_input()
 				return
+			"clear":
+				output.text = ""
+				_clear_input()
+				return
 			_:
 				# Single line commands are still valid gdscript snippets
 				for i in code:
 					ae.add(i)
 	else:
-		for i in code:
-			ae.add(i)
+		if code[0].begins_with("func"):
+			var func_header: PoolStringArray = code[0].split(" ", false, 1)
+			if func_header.size() < 2:
+				_add_output("Invalid function definition")
+				_clear_input()
+				return
+			var func_name: PoolStringArray = func_header[1].split("(", false, 1)
+			if func_name.size() < 2:
+				_add_output("Invalid function definition")
+				_clear_input()
+				return
+			env.functions[func_name[0]] = code.join("\n")
+			ae.add("pass")
+		else:
+			for i in code:
+				ae.add(i)
 	
 	if env.apply_to_expression(ae) != OK:
 		_add_output("Invalid input")
@@ -280,7 +326,6 @@ func _on_input_submit() -> void:
 	var res = ae.execute()
 	
 	_add_output(str(res) if res else "null")
-	
 	_clear_input()
 
 #-----------------------------------------------------------------------------#
@@ -299,14 +344,27 @@ static func _set_half_size_split(c: SplitContainer, use_x: bool, amount: float =
 func _add_output(text: String) -> void:
 	output.text += "\n%s\n%s\n" % [_current_time(), text]
 
+## Resets the env for the REPL
 func _reset_repl() -> void:
 	if env != null:
 		env.scene_tree.free()
 	env = Env.new()
 
+## Clears REPL input and scrolls output to the last line
 func _clear_input() -> void:
 	input.text = ""
 	output.scroll_vertical = output.get_line_count()
+
+func _add_history(text: String) -> void:
+	history.push_back(text)
+	if history.size() > MAX_HISTORY:
+		history.pop_front()
+	
+	history_pointer = history.size()
+
+func _set_from_history() -> void:
+	input.text = history[history_pointer]
+	input.cursor_set_column(input.get_line(input.cursor_get_line()).length())
 
 #-----------------------------------------------------------------------------#
 # Public functions                                                            #

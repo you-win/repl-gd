@@ -123,6 +123,7 @@ class Runner extends AbstractFunction:
 
 const RUN_FUNC := "__runner__"
 
+var raw := []
 var variables := []
 var functions := []
 var runner := Runner.new()
@@ -158,18 +159,21 @@ static func _build_source(v: Array, f: Array, r: Runner) -> String:
 	
 	return source
 
-static func _create_script(v: Array, f: Array, r: Runner) -> GDScript:
+static func _create_script(raw: Array, variables: Array, functions: Array, runner: Runner) -> GDScript:
 	var s := GDScript.new()
 	
 	var source := ""
 	
-	for i in v:
+	for i in raw:
+		source += "\n%s\n" % i
+	
+	for i in variables:
 		source += i.output()
 	
-	for i in f:
+	for i in functions:
 		source += i.output()
 	
-	source += r.output()
+	source += runner.output()
 	
 	s.source_code = source
 	
@@ -204,12 +208,15 @@ func add(text: String = "") -> Runner:
 	
 	return runner
 
-func add_raw(text: String) -> Runner:
-	var split := text.split(";")
+func add_delimited(text: String, delimiter: String = ";") -> Runner:
+	var split := text.split(delimiter)
 	for i in split:
 		runner.add(i)
 	
 	return runner
+
+func add_raw(text: String) -> void:
+	raw.append(text)
 
 func tab(amount: int = 1) -> Runner:
 	runner.tab(amount)
@@ -224,7 +231,7 @@ func newline() -> Runner:
 func compile(text: String = "") -> int:
 	if not text.empty():
 		runner.add(text)
-	gdscript = _create_script(variables, functions, runner)
+	gdscript = _create_script(raw, variables, functions, runner)
 	
 	return gdscript.reload()
 
