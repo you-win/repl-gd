@@ -11,6 +11,7 @@ margin_left = 10.0
 margin_top = 10.0
 margin_right = -10.0
 margin_bottom = -10.0
+rect_min_size = Vector2( 0, 400 )
 size_flags_horizontal = 3
 size_flags_vertical = 3
 script = ExtResource( 1 )

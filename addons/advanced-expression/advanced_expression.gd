@@ -128,6 +128,7 @@ var functions := []
 var runner := Runner.new()
 
 var gdscript: GDScript
+var instance: Reference
 
 ###############################################################################
 # Builtin functions                                                           #
@@ -174,6 +175,11 @@ static func _create_script(v: Array, f: Array, r: Runner) -> GDScript:
 	
 	return s
 
+func _get_instance() -> Reference:
+	if instance == null:
+		instance = gdscript.new()
+	return instance
+
 ###############################################################################
 # Public functions                                                            #
 ###############################################################################
@@ -215,16 +221,27 @@ func newline() -> Runner:
 	
 	return runner
 
-func compile() -> int:
+func compile(text: String = "") -> int:
+	if not text.empty():
+		runner.add(text)
 	gdscript = _create_script(variables, functions, runner)
 	
 	return gdscript.reload()
 
+func inject_variables(data: Dictionary) -> int:
+	var script_instance = _get_instance()
+	
+	for key in data.keys():
+		script_instance.set(key, data[key])
+	
+	return OK
+
 func execute(params: Array = []):
-	return gdscript.new().callv(RUN_FUNC, params)
+	return _get_instance().callv(RUN_FUNC, params)
 
 func clear() -> void:
 	gdscript = null
+	instance = null
 	
 	variables.clear()
 	functions.clear()
