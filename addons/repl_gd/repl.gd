@@ -125,12 +125,13 @@ class Env:
 	func cleanup() -> void:
 		for key in variables.keys():
 			var val = variables[key]
-			
+
 			if val is Node:
 				val.free()
-		
+
 		variables.clear()
 		functions.clear()
+		BUILTIN_VARS.clear()
 		
 		scene_tree.free()
 
