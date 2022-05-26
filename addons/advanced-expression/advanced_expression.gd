@@ -136,7 +136,7 @@ var instance: Reference
 ###############################################################################
 
 func _to_string() -> String:
-	return _build_source(variables, functions, runner)
+	return _build_source(raw, variables, functions, runner)
 
 ###############################################################################
 # Connections                                                                 #
@@ -146,26 +146,8 @@ func _to_string() -> String:
 # Private functions                                                           #
 ###############################################################################
 
-static func _build_source(v: Array, f: Array, r: Runner) -> String:
+static func _build_source(raw: Array, variables: Array, functions: Array, runner: Runner) -> String:
 	var source := ""
-	
-	for i in v:
-		source += i.output()
-	
-	for i in f:
-		source += i.output()
-	
-	source += r.output()
-	
-	return source
-
-static func _create_script(raw: Array, variables: Array, functions: Array, runner: Runner) -> GDScript:
-	var s := GDScript.new()
-	
-	var source := ""
-	
-	for i in raw:
-		source += "\n%s\n" % i
 	
 	for i in variables:
 		source += i.output()
@@ -173,9 +155,17 @@ static func _create_script(raw: Array, variables: Array, functions: Array, runne
 	for i in functions:
 		source += i.output()
 	
+	for i in raw:
+		source += "\n%s\n" % i
+	
 	source += runner.output()
 	
-	s.source_code = source
+	return source
+
+static func _create_script(raw: Array, variables: Array, functions: Array, runner: Runner) -> GDScript:
+	var s := GDScript.new()
+	
+	s.source_code = _build_source(raw, variables, functions, runner)
 	
 	return s
 

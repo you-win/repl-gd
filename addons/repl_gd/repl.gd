@@ -13,6 +13,22 @@ class Env:
 	## User-defined functions to be injected into the script on each run
 	## @type: Dictionary<String, String>
 	var functions := {}
+	## Runtime-loaded scripts that can be called
+	## @type: Dictionary<String, Dictionary<String, Array<String>>>
+	##
+	## @example:
+	##	{
+	##		"my_script": {
+	##			"my_func": [
+	##				"param_a"
+	##			],
+	##		}
+	##	}
+	var external_script_mappings := {}
+	## Actual instances of runtime-loaded scripts
+	## @type: Dictionary<String, Variant>
+	var external_scripts := {}
+	
 	## The scene tree to use in the script on each run
 	var scene_tree: SceneTree
 	## Whether the Scene tree is provided by the user or not
@@ -28,8 +44,10 @@ class Env:
 		
 		BUILTIN_VARS["__env__"] = self
 		BUILTIN_VARS["__stored_vars__"] = variables
+		BUILTIN_VARS["__external__"] = external_scripts
 		BUILTIN_VARS["__tree__"] = scene_tree
 	
+	## Applies properties and helper functions to an AdvancedExpression
 	func apply_to_expression(ae: AdvExp) -> int:
 		ae.add_function("__store_var__") \
 			.add_param("name") \
@@ -111,6 +129,19 @@ class Env:
 		for val in functions.values():
 			ae.add_raw(val)
 		
+		for script_name in external_script_mappings.keys():
+			for func_name in external_script_mappings[script_name].keys():
+				var params = external_script_mappings[script_name][func_name]
+				
+				var builder = ae.add_function(func_name)
+				var param_string_builder := PoolStringArray()
+				for i in params:
+					builder.add_param(i)
+					param_string_builder.append(i)
+				
+				builder.add("return __external__[\"%s\"].%s(%s)" % [
+					script_name, func_name, param_string_builder.join(",")])
+		
 		# Must be done _before_ compiling the script
 		for dict in [BUILTIN_VARS, variables]:
 			for key in dict.keys():
@@ -128,18 +159,118 @@ class Env:
 		
 		return OK
 	
-	func cleanup() -> void:
+	## Applies props to an AdvancedExpression but does not apply any helper functions
+	func export_props(ae: AdvExp) -> void:
 		for key in variables.keys():
 			var val = variables[key]
+			
+			# The value to be used when building the script
+			var text := ""
+			
+			match typeof(val):
+				TYPE_OBJECT:
+					printerr("Unable to convert object to text")
+					text = "null"
+				TYPE_ARRAY, TYPE_COLOR_ARRAY, TYPE_INT_ARRAY, TYPE_RAW_ARRAY, TYPE_REAL_ARRAY, \
+						TYPE_STRING_ARRAY, TYPE_VECTOR2_ARRAY, TYPE_VECTOR3_ARRAY:
+					printerr("Unable to convert array to text")
+					text = "[]"
+				TYPE_DICTIONARY:
+					printerr("Unable to convert dictionary to text")
+					text = "{}"
+				TYPE_BASIS:
+					text = _export_basis(val)
+				TYPE_COLOR:
+					text = "Color(%d, %d, %d, %d)" % [
+						val.r,
+						val.g,
+						val.b,
+						val.a
+					]
+				TYPE_PLANE:
+					text = "Plane(%d, %d, %d, %d)" % [
+						val.x,
+						val.y,
+						val.z,
+						val.d
+					]
+				TYPE_QUAT:
+					text = "Quat(%d, %d, %d, %d)" % [
+						val.x,
+						val.y,
+						val.z,
+						val.w
+					]
+				TYPE_RECT2:
+					text = "Rect2(%s, %s)" % [
+						_export_vector2(val.position),
+						_export_vector2(val.size)
+					]
+				TYPE_RID:
+					printerr("Saving RIDs is probably a bad idea")
+					text = "RID(%d)" % val.get_id()
+				TYPE_STRING:
+					text = "\"%s\"" % val
+				TYPE_TRANSFORM:
+					text = "Transform(%s, %s)" % [
+						_export_basis(val.basis),
+						_export_vector3(val.origin)
+					]
+				TYPE_TRANSFORM2D:
+					text = "Transform2D(%s, %s, %s)" % [
+						_export_vector2(val.x),
+						_export_vector2(val.y),
+						_export_vector2(val.origin)
+					]
+				TYPE_VECTOR2:
+					text = _export_vector2(val)
+				TYPE_VECTOR3:
+					text = _export_vector3(val)
+				_:
+					text = str(val)
+		
+			ae.add_variable(key, text)
+		
+		for val in functions.values():
+			ae.add_raw(val)
+		
+		ae.add("pass")
+	
+	## Helper function for generating a Basis string for use in a script
+	static func _export_basis(b: Basis) -> String:
+		return "Basis(%s, %s, %s)" % [
+			_export_vector3(b.x),
+			_export_vector3(b.y),
+			_export_vector3(b.z)
+		]
+	
+	## Helper function for generating a Vector3 string for use in a script
+	static func _export_vector3(v: Vector3) -> String:
+		return "Vector3(%d, %d, %d)" % [
+			v.x,
+			v.y,
+			v.z
+		]
+	
+	## Helper function for generating a Vector2 string for use in a script
+	static func _export_vector2(v: Vector2) -> String:
+		return "Vector2(%d, %d)" % [v.x, v.y]
+	
+	func cleanup() -> void:
+		for dict in [variables, external_scripts]:
+			for key in dict.keys():
+				var val = dict[key]
 
-			if val is Node and is_instance_valid(val):
-				val.free()
+				if val is Node and is_instance_valid(val):
+					val.free()
 
 		variables.clear()
 		functions.clear()
+		external_scripts.clear()
+		external_script_mappings.clear()
 		BUILTIN_VARS.clear()
 		
-		if _is_custom_scene_tree:
+		if not _is_custom_scene_tree:
 			scene_tree.free()
 
 var env: Env
@@ -165,7 +296,6 @@ onready var func_list := $Body/State/Functions/List/FuncList as VBoxContainer
 
 onready var scene := $Body/State/Scene/Scene as Tree
 
-onready var save_notes := $Body/State/Notes/Options/Save as Button
 onready var notes := $Body/State/Notes/Notes as TextEdit
 
 onready var output := $Body/IO/Output as TextEdit
@@ -177,6 +307,8 @@ var history := []
 
 ## The SceneTree to use for the inner Env
 var scene_tree: SceneTree
+
+var _save_path := ""
 
 #-----------------------------------------------------------------------------#
 # Builtin functions                                                           #
@@ -226,11 +358,9 @@ func _ready() -> void:
 	input.connect("gui_input", self, "_on_input_gui_input")
 	$Body/IO/Inputs/Send.connect("pressed", self, "_on_input_submit")
 	
-	_reset_repl()
+	$Body/State/Notes/Options/Save.connect("pressed", self, "_on_save_notes")
 	
-	var tree_item := scene.create_item()
-	tree_item.set_text(0, "root")
-	_update_ui()
+	_reset_repl()
 	
 	output.text = "%s\nReady\n" % _current_time()
 
@@ -242,6 +372,9 @@ func _exit_tree() -> void:
 # Connections                                                                 #
 #-----------------------------------------------------------------------------#
 
+static func _delete_node(node: Node) -> void:
+	node.queue_free()
+
 ## Mega handler for menu buttons
 func _on_popup_index_pressed(index: int, menu_id: int, popup: PopupMenu) -> void:
 	var text: String = popup.get_item_text(index)
@@ -250,14 +383,13 @@ func _on_popup_index_pressed(index: int, menu_id: int, popup: PopupMenu) -> void
 		OptionMenuType.FILE:
 			match text:
 				"Save":
-					print_debug("Save not yet implemented")
+					_save_as(_save_path)
 				"Save as":
-					print_debug("Save as not yet implemented")
+					_save_as()
 				"Load gdscript":
-					print_debug("Load gdscript not yet implemented")
+					_show_load_dialog()
 				"Reset":
 					_reset_repl()
-					_update_ui()
 				"Quit":
 					get_tree().quit()
 				_:
@@ -375,6 +507,8 @@ func _on_input_submit() -> void:
 	
 	_update_ui()
 
+#region Property callbacks
+
 func _on_var_added(var_name: String, var_value) -> void:
 	var node := _create_prop_label(var_name, var_value, "_on_var_removed")
 	
@@ -402,6 +536,50 @@ func _on_func_removed(control: Node, func_name: String) -> void:
 	control.queue_free()
 	env.functions.erase(func_name)
 	_update_ui()
+
+#endregion
+
+#region Saving
+
+func _on_save_notes() -> void:
+	_show_save_dialog("_save_file", notes.text)
+
+func _save_file(path: String, contents: String) -> void:
+	var file := File.new()
+	if file.open(path, File.WRITE) != OK:
+		_show_accept_dialog("Unable to open %s for writing" % path)
+		return
+	
+	file.store_string(contents)
+	file.close()
+	
+	_save_path = path
+	
+	_show_accept_dialog("Saved %s successfully" % path)
+
+#endregion
+
+func _load_gdscript(path: String) -> void:
+	var file := File.new()
+	if file.open(path, File.READ) != OK:
+		_show_accept_dialog("Unable to open %s for reading" % path)
+		return
+	
+	var gdscript := GDScript.new()
+	gdscript.source_code = file.get_as_text()
+	if gdscript.reload() != OK:
+		_show_accept_dialog("Invalid GDScript file %s" % path)
+		return
+	
+	var script_name := path.get_basename().get_file()
+	env.external_script_mappings[script_name] = {}
+	for dict in gdscript.get_script_method_list():
+		if dict.name in ["__runner__",
+				"_init", "_ready", "_exit_tree", "_notification", "_input", "_unhandled_input",
+				"_unhandled_key_input", "_process", "_physics_process"]:
+			continue
+		env.external_script_mappings[script_name][dict.name] = dict.args
+	env.external_scripts[script_name] = gdscript.new()
 
 #-----------------------------------------------------------------------------#
 # Private functions                                                           #
@@ -431,6 +609,8 @@ func _reset_repl() -> void:
 		env.cleanup()
 	env = Env.new(scene_tree)
 	env.connect("var_added", self, "_on_var_added")
+	
+	_update_ui()
 
 ## Clears REPL input and scrolls output to the last line
 func _clear_input() -> void:
@@ -454,6 +634,13 @@ func _set_from_history() -> void:
 	input.text = history[history_pointer]
 	input.cursor_set_column(input.get_line(input.cursor_get_line()).length())
 
+## Creates a func/var label and connects them to a given callback
+##
+## @param: prop_name: String - The name of the property
+## @param: value: Variant - The value of the property. Will have `str(...)` called on it
+## @param: callback: String - The callback to use for the label
+##
+## @return: HBoxContainer - The resulting label
 func _create_prop_label(prop_name: String, value, callback: String) -> HBoxContainer:
 	var hbox := HBoxContainer.new()
 	hbox.name = prop_name
@@ -479,15 +666,22 @@ func _create_prop_label(prop_name: String, value, callback: String) -> HBoxConta
 	
 	return hbox
 
+## Updates all UI elements that do not rely on callbacks
 func _update_ui() -> void:
 	var_count.text = str(env.variables.size())
 	func_count.text = str(env.functions.size())
 	
+	if scene.get_root() == null:
+		var tree_item := scene.create_item()
+		tree_item.set_text(0, "root")
 	var root: TreeItem = scene.get_root()
 	_clear_tree(root)
 	
 	_create_tree(scene, root, env.scene_tree.root)
 
+## Recursively clear the tree
+##
+## @param: root: TreeItem - The root TreeItem. This will not be deleted
 static func _clear_tree(root: TreeItem) -> void:
 	var item := root.get_children()
 	while item != null:
@@ -498,11 +692,62 @@ static func _clear_tree(root: TreeItem) -> void:
 		
 		inner.free()
 
+## Consructs a tree from a SceneTree.root node
+##
+## @param: tree: Tree - The Tree that will have TreeItem's created on it
+## @param: root: TreeItem - The root TreeItem
+## @param: node: Node - The SceneTree's root
 static func _create_tree(tree: Tree, root: TreeItem, node: Node) -> void:
 	for i in node.get_children():
 		var item := tree.create_item(root)
 		item.set_text(TREE_COL, i.name)
 		_create_tree(tree, item, i)
+
+#region Saving
+
+func _show_save_dialog(callback: String, file_contents: String) -> void:
+	var fd := FileDialog.new()
+	fd.access = FileDialog.ACCESS_FILESYSTEM
+	fd.mode = FileDialog.MODE_SAVE_FILE
+	
+	fd.connect("file_selected", self, callback, [file_contents])
+	for i in ["hide", "popup_hide"]:
+		fd.connect(i, self, "_delete_node", [fd])
+	
+	add_child(fd)
+	fd.popup_centered_ratio()
+
+func _show_accept_dialog(text: String) -> void:
+	var ad := AcceptDialog.new()
+	ad.dialog_text = text
+	
+	for i in ["hide", "popup_hide"]:
+		ad.connect(i, self, "_delete_node", [ad])
+	
+	add_child(ad)
+	ad.popup_centered()
+
+func _save_as(path: String = "") -> void:
+	var ae := AdvExp.new()
+	env.export_props(ae)
+	if path.empty():
+		_show_save_dialog("_save_file", ae.to_string())
+	else:
+		_save_file(path, ae.to_string())
+
+#endregion
+
+func _show_load_dialog() -> void:
+	var fd := FileDialog.new()
+	fd.access = FileDialog.ACCESS_FILESYSTEM
+	fd.mode = FileDialog.MODE_OPEN_FILE
+	
+	fd.connect("file_selected", self, "_load_gdscript")
+	for i in ["hide", "popup_hide"]:
+		fd.connect(i, self, "_delete_node", [fd])
+	
+	add_child(fd)
+	fd.popup_centered_ratio()
 
 #-----------------------------------------------------------------------------#
 # Public functions                                                            #
