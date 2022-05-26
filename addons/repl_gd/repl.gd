@@ -15,10 +15,16 @@ class Env:
 	var functions := {}
 	## The scene tree to use in the script on each run
 	var scene_tree: SceneTree
+	## Whether the Scene tree is provided by the user or not
+	var _is_custom_scene_tree := false
 	
-	func _init() -> void:
-		scene_tree = SceneTree.new()
-		scene_tree.multiplayer_poll = false
+	func _init(p_scene_tree: SceneTree) -> void:
+		if p_scene_tree == null:
+			scene_tree = SceneTree.new()
+			scene_tree.multiplayer_poll = false
+		else:
+			scene_tree = p_scene_tree
+			_is_custom_scene_tree = true
 		
 		BUILTIN_VARS["__env__"] = self
 		BUILTIN_VARS["__stored_vars__"] = variables
@@ -126,14 +132,15 @@ class Env:
 		for key in variables.keys():
 			var val = variables[key]
 
-			if val is Node:
+			if val is Node and is_instance_valid(val):
 				val.free()
 
 		variables.clear()
 		functions.clear()
 		BUILTIN_VARS.clear()
 		
-		scene_tree.free()
+		if _is_custom_scene_tree:
+			scene_tree.free()
 
 var env: Env
 
@@ -167,6 +174,9 @@ onready var input := $Body/IO/Inputs/Input as TextEdit
 const MAX_HISTORY: int = 100
 var history_pointer: int = 0
 var history := []
+
+## The SceneTree to use for the inner Env
+var scene_tree: SceneTree
 
 #-----------------------------------------------------------------------------#
 # Builtin functions                                                           #
@@ -419,7 +429,7 @@ func _add_output(text: String) -> void:
 func _reset_repl() -> void:
 	if env != null:
 		env.cleanup()
-	env = Env.new()
+	env = Env.new(scene_tree)
 	env.connect("var_added", self, "_on_var_added")
 
 ## Clears REPL input and scrolls output to the last line
@@ -497,3 +507,16 @@ static func _create_tree(tree: Tree, root: TreeItem, node: Node) -> void:
 #-----------------------------------------------------------------------------#
 # Public functions                                                            #
 #-----------------------------------------------------------------------------#
+
+## Configures the SceneTree object to be used for the inner Env. The inner Env is then
+## reset to use the new SceneTree.
+##
+## Does nothing if the SceneTree is the same
+##
+## @param: p_scene_tree: SceneTree - The new SceneTree to use
+func configure_scene_tree(p_scene_tree: SceneTree) -> void:
+	if p_scene_tree == scene_tree:
+		return
+	scene_tree = p_scene_tree
+	_reset_repl()
+	_update_ui()
