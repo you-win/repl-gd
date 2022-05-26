@@ -1,6 +1,8 @@
 extends VBoxContainer
 
 class Env:
+	signal var_added(var_name, var_value)
+	
 	const AdvExp := preload("res://addons/advanced-expression/advanced_expression.gd")
 	
 	const BUILTIN_VARS := {}
@@ -18,6 +20,7 @@ class Env:
 		scene_tree = SceneTree.new()
 		scene_tree.multiplayer_poll = false
 		
+		BUILTIN_VARS["__env__"] = self
 		BUILTIN_VARS["__stored_vars__"] = variables
 		BUILTIN_VARS["__tree__"] = scene_tree
 	
@@ -25,7 +28,8 @@ class Env:
 		ae.add_function("__store_var__") \
 			.add_param("name") \
 			.add_param("value") \
-			.add("__stored_vars__[name] = value")
+			.add("__stored_vars__[name] = value") \
+			.add("__env__.emit_signal(\"var_added\", name, value)")
 		
 		#region Node funcs
 		
@@ -117,8 +121,20 @@ class Env:
 				return err
 		
 		return OK
+	
+	func cleanup() -> void:
+		for key in variables.keys():
+			var val = variables[key]
+			
+			if val is Node:
+				val.free()
+		
+		variables.clear()
+		functions.clear()
+		
+		scene_tree.free()
 
-var env := Env.new()
+var env: Env
 
 const AdvExp := preload("res://addons/advanced-expression/advanced_expression.gd")
 
@@ -133,6 +149,17 @@ const TREE_COL: int = 0
 onready var tree := $Body/State/Tree as Tree
 const INITIAL_PAGE := "General"
 
+onready var var_count := $Body/State/General/List/VarCount/Value as Label
+onready var func_count := $Body/State/General/List/FuncCount/Value as Label
+
+onready var var_list := $Body/State/Variables/List/VarList as VBoxContainer
+onready var func_list := $Body/State/Functions/List/FuncList as VBoxContainer
+
+onready var scene := $Body/State/Scene/Scene as Tree
+
+onready var save_notes := $Body/State/Notes/Options/Save as Button
+onready var notes := $Body/State/Notes/Notes as TextEdit
+
 onready var output := $Body/IO/Output as TextEdit
 onready var input := $Body/IO/Inputs/Input as TextEdit
 
@@ -143,9 +170,6 @@ var history := []
 #-----------------------------------------------------------------------------#
 # Builtin functions                                                           #
 #-----------------------------------------------------------------------------#
-
-func _init() -> void:
-	pass
 
 func _ready() -> void:
 	var file_popup: PopupMenu = $Options/File.get_popup()
@@ -191,11 +215,17 @@ func _ready() -> void:
 	input.connect("gui_input", self, "_on_input_gui_input")
 	$Body/IO/Inputs/Send.connect("pressed", self, "_on_input_submit")
 	
+	_reset_repl()
+	
+	var tree_item := scene.create_item()
+	tree_item.set_text(0, "root")
+	_update_ui()
+	
 	output.text = "%s\nReady\n" % _current_time()
 
 func _exit_tree() -> void:
 	if env != null:
-		env.scene_tree.free()
+		env.cleanup()
 
 #-----------------------------------------------------------------------------#
 # Connections                                                                 #
@@ -216,6 +246,7 @@ func _on_popup_index_pressed(index: int, menu_id: int, popup: PopupMenu) -> void
 					print_debug("Load gdscript not yet implemented")
 				"Reset":
 					_reset_repl()
+					_update_ui()
 				"Quit":
 					get_tree().quit()
 				_:
@@ -312,7 +343,11 @@ func _on_input_submit() -> void:
 				_add_output("Invalid function definition")
 				_clear_input()
 				return
-			env.functions[func_name[0]] = code.join("\n")
+			
+			var n: String = func_name[0]
+			env.functions[n] = code.join("\n")
+			_on_func_added(n, env.functions[n])
+			
 			ae.add("pass")
 		else:
 			for i in code:
@@ -320,18 +355,49 @@ func _on_input_submit() -> void:
 	
 	if env.apply_to_expression(ae) != OK:
 		_add_output("Invalid input")
-		output.scroll_vertical = output.get_line_count()
-		return
+		_clear_input()
+	else:
+		var res = ae.execute()
+		
+		_add_output(str(res) if res else "null")
+		_clear_input()
 	
-	var res = ae.execute()
+	_update_ui()
+
+func _on_var_added(var_name: String, var_value) -> void:
+	var node := _create_prop_label(var_name, var_value, "_on_var_removed")
 	
-	_add_output(str(res) if res else "null")
-	_clear_input()
+	var existing_node = var_list.get_node_or_null(var_name)
+	if existing_node != null:
+		existing_node.free()
+	
+	var_list.add_child(node)
+
+func _on_var_removed(control: Node, var_name: String) -> void:
+	control.queue_free()
+	env.variables.erase(var_name)
+	_update_ui()
+
+func _on_func_added(func_name: String, func_body: String) -> void:
+	var node := _create_prop_label(func_name, func_body, "_on_func_removed")
+	
+	var existing_node = var_list.get_node_or_null(func_name)
+	if existing_node != null:
+		existing_node.free()
+	
+	func_list.add_child(node)
+
+func _on_func_removed(control: Node, func_name: String) -> void:
+	control.queue_free()
+	env.functions.erase(func_name)
+	_update_ui()
 
 #-----------------------------------------------------------------------------#
 # Private functions                                                           #
 #-----------------------------------------------------------------------------#
 
+## Gets the current time and formats it. All numbers are padded with 0s so they
+## take up at least 2 spaces
 static func _current_time() -> String:
 	var time: Dictionary = OS.get_time()
 	
@@ -341,20 +407,29 @@ static func _current_time() -> String:
 static func _set_half_size_split(c: SplitContainer, use_x: bool, amount: float = 0.5) -> void:
 	c.split_offset = (c.rect_size.x if use_x else c.rect_size.y) * amount
 
+## Adds a line to the output. Will append a line containing the current time before
+## adding the text
+##
+## @param: text: String - The text to display in the output
 func _add_output(text: String) -> void:
 	output.text += "\n%s\n%s\n" % [_current_time(), text]
 
 ## Resets the env for the REPL
 func _reset_repl() -> void:
 	if env != null:
-		env.scene_tree.free()
+		env.cleanup()
 	env = Env.new()
+	env.connect("var_added", self, "_on_var_added")
 
 ## Clears REPL input and scrolls output to the last line
 func _clear_input() -> void:
 	input.text = ""
 	output.scroll_vertical = output.get_line_count()
 
+## Adds text to the history and increments the history pointer
+## If the history is full, removes the oldest entry
+##
+## @param: text: String - The text to add to the history
 func _add_history(text: String) -> void:
 	history.push_back(text)
 	if history.size() > MAX_HISTORY:
@@ -362,9 +437,61 @@ func _add_history(text: String) -> void:
 	
 	history_pointer = history.size()
 
+## Replaces the current text in the input with the line from the history located
+## at the history_pointer. Also sets the user's cursor to the end of the line
 func _set_from_history() -> void:
 	input.text = history[history_pointer]
 	input.cursor_set_column(input.get_line(input.cursor_get_line()).length())
+
+func _create_prop_label(prop_name: String, value, callback: String) -> HBoxContainer:
+	var hbox := HBoxContainer.new()
+	hbox.name = prop_name
+	hbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	
+	var name_label := Label.new()
+	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	name_label.text = prop_name
+	
+	var value_label := RichTextLabel.new()
+	value_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	value_label.text = str(value)
+	value_label.selection_enabled = true
+	value_label.fit_content_height = true # TODO this is deprecated
+	
+	var delete_button := Button.new()
+	delete_button.text = "Delete"
+	delete_button.connect("pressed", self, callback, [hbox, prop_name])
+	
+	hbox.add_child(name_label)
+	hbox.add_child(value_label)
+	hbox.add_child(delete_button)
+	
+	return hbox
+
+func _update_ui() -> void:
+	var_count.text = str(env.variables.size())
+	func_count.text = str(env.functions.size())
+	
+	var root: TreeItem = scene.get_root()
+	_clear_tree(root)
+	
+	_create_tree(scene, root, env.scene_tree.root)
+
+static func _clear_tree(root: TreeItem) -> void:
+	var item := root.get_children()
+	while item != null:
+		_clear_tree(item)
+		
+		var inner := item
+		item = item.get_next()
+		
+		inner.free()
+
+static func _create_tree(tree: Tree, root: TreeItem, node: Node) -> void:
+	for i in node.get_children():
+		var item := tree.create_item(root)
+		item.set_text(TREE_COL, i.name)
+		_create_tree(tree, item, i)
 
 #-----------------------------------------------------------------------------#
 # Public functions                                                            #

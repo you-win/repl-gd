@@ -57,7 +57,7 @@ margin_bottom = 556.0
 
 [node name="List" type="VBoxContainer" parent="Body/State/General"]
 margin_right = 410.0
-margin_bottom = 14.0
+margin_bottom = 50.0
 size_flags_horizontal = 3
 
 [node name="Label" type="Label" parent="Body/State/General/List"]
@@ -66,22 +66,129 @@ margin_bottom = 14.0
 text = "General"
 align = 1
 
-[node name="Variables" type="ScrollContainer" parent="Body/State"]
+[node name="VarCount" type="HBoxContainer" parent="Body/State/General/List"]
+margin_top = 18.0
+margin_right = 410.0
+margin_bottom = 32.0
+
+[node name="Label" type="Label" parent="Body/State/General/List/VarCount"]
+margin_right = 203.0
+margin_bottom = 14.0
+size_flags_horizontal = 3
+text = "Var count:"
+
+[node name="Value" type="Label" parent="Body/State/General/List/VarCount"]
+margin_left = 207.0
+margin_right = 410.0
+margin_bottom = 14.0
+size_flags_horizontal = 3
+text = "0"
+
+[node name="FuncCount" type="HBoxContainer" parent="Body/State/General/List"]
+margin_top = 36.0
+margin_right = 410.0
+margin_bottom = 50.0
+
+[node name="Label" type="Label" parent="Body/State/General/List/FuncCount"]
+margin_right = 203.0
+margin_bottom = 14.0
+size_flags_horizontal = 3
+text = "Func count:"
+
+[node name="Value" type="Label" parent="Body/State/General/List/FuncCount"]
+margin_left = 207.0
+margin_right = 410.0
+margin_bottom = 14.0
+size_flags_horizontal = 3
+text = "0"
+
+[node name="Variables" type="VBoxContainer" parent="Body/State"]
+visible = false
+margin_top = 241.0
+margin_right = 467.0
+margin_bottom = 556.0
+
+[node name="Label" type="Label" parent="Body/State/Variables"]
+margin_right = 467.0
+margin_bottom = 14.0
+text = "Variables"
+align = 1
+
+[node name="HSeparator" type="HSeparator" parent="Body/State/Variables"]
+margin_top = 18.0
+margin_right = 467.0
+margin_bottom = 22.0
+
+[node name="List" type="ScrollContainer" parent="Body/State/Variables"]
+margin_top = 26.0
+margin_right = 467.0
+margin_bottom = 26.0
+size_flags_vertical = 3
+
+[node name="VarList" type="VBoxContainer" parent="Body/State/Variables/List"]
+margin_right = 467.0
+size_flags_horizontal = 3
+size_flags_vertical = 3
+
+[node name="Functions" type="VBoxContainer" parent="Body/State"]
+visible = false
+margin_top = 241.0
+margin_right = 471.0
+margin_bottom = 556.0
+
+[node name="Label" type="Label" parent="Body/State/Functions"]
+margin_right = 471.0
+margin_bottom = 14.0
+text = "Functions"
+align = 1
+
+[node name="HSeparator" type="HSeparator" parent="Body/State/Functions"]
+margin_top = 18.0
+margin_right = 471.0
+margin_bottom = 22.0
+
+[node name="List" type="ScrollContainer" parent="Body/State/Functions"]
+margin_top = 26.0
+margin_right = 471.0
+margin_bottom = 315.0
+size_flags_vertical = 3
+
+[node name="FuncList" type="VBoxContainer" parent="Body/State/Functions/List"]
+margin_right = 471.0
+margin_bottom = 289.0
+size_flags_horizontal = 3
+size_flags_vertical = 3
+
+[node name="Scene" type="MarginContainer" parent="Body/State"]
 visible = false
 margin_top = 241.0
 margin_right = 410.0
 margin_bottom = 556.0
 
-[node name="List" type="VBoxContainer" parent="Body/State/Variables"]
+[node name="Scene" type="Tree" parent="Body/State/Scene"]
 margin_right = 410.0
-margin_bottom = 14.0
-size_flags_horizontal = 3
+margin_bottom = 315.0
 
-[node name="Label" type="Label" parent="Body/State/Variables/List"]
-margin_right = 410.0
-margin_bottom = 14.0
-text = "Variables"
-align = 1
+[node name="Notes" type="VBoxContainer" parent="Body/State"]
+visible = false
+margin_right = 40.0
+margin_bottom = 40.0
+
+[node name="Options" type="HBoxContainer" parent="Body/State/Notes"]
+margin_right = 40.0
+margin_bottom = 40.0
+
+[node name="Save" type="Button" parent="Body/State/Notes/Options"]
+margin_right = 12.0
+margin_bottom = 20.0
+text = "Save"
+
+[node name="Notes" type="TextEdit" parent="Body/State/Notes"]
+margin_right = 40.0
+margin_bottom = 40.0
+size_flags_vertical = 3
+syntax_highlighting = true
+show_line_numbers = true
 
 [node name="IO" type="VSplitContainer" parent="Body"]
 margin_left = 422.0
