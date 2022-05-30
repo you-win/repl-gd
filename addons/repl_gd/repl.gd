@@ -741,7 +741,7 @@ static func _create_tree(tree: Tree, root: TreeItem, node: Node) -> void:
 func _show_save_dialog(callback: Callable, file_contents: String) -> void:
 	var fd := FileDialog.new()
 	fd.access = FileDialog.ACCESS_FILESYSTEM
-	fd.mode = FileDialog.MODE_SAVE_FILE
+	fd.mode = FileDialog.FILE_MODE_SAVE_FILE
 	
 #	fd.connect("file_selected", self, callback, [file_contents])
 	fd.file_selected.connect(callback.bind(file_contents))
@@ -776,7 +776,7 @@ func _save_as(path: String = "") -> void:
 func _show_load_dialog() -> void:
 	var fd := FileDialog.new()
 	fd.access = FileDialog.ACCESS_FILESYSTEM
-	fd.mode = FileDialog.MODE_OPEN_FILE
+	fd.mode = FileDialog.FILE_MODE_SAVE_FILE
 	
 #	fd.connect("file_selected", self, "_load_gdscript")
 	fd.file_selected.connect(_load_gdscript)
