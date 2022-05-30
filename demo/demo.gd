@@ -8,10 +8,10 @@ var debug_console: CanvasLayer
 #-----------------------------------------------------------------------------#
 
 func _init() -> void:
-	OS.center_window()
+	DisplayServer.window_set_position(DisplayServer.screen_get_size() / 2)
 
 func _ready() -> void:
-	debug_console = preload("res://addons/repl_gd/debug_console.tscn").instance()
+	debug_console = preload("res://addons/repl_gd/debug_console.tscn").instantiate()
 	get_tree().root.call_deferred("add_child", debug_console)
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -19,12 +19,12 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	
 	if event.pressed:
-		if event.scancode == KEY_ESCAPE:
+		if event.keycode == KEY_ESCAPE:
 			show_repl = not show_repl
 			if show_repl:
 				debug_console.transform.origin = Vector2.ZERO
 			else:
-				debug_console.transform.origin = -OS.window_size
+				debug_console.transform.origin = -DisplayServer.window_get_size() as Vector2
 
 #-----------------------------------------------------------------------------#
 # Connections                                                                 #

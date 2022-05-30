@@ -1,11 +1,11 @@
-tool
+@tool
 extends EditorPlugin
 
 const PLUGIN_NAME := "REPL GD"
 var repl: Control
 
 func _enter_tree():
-	repl = preload("res://addons/repl_gd/repl.tscn").instance()
+	repl = preload("res://addons/repl_gd/repl.tscn").instantiate()
 	_inject_tool(repl)
 	add_control_to_bottom_panel(repl, PLUGIN_NAME)
 

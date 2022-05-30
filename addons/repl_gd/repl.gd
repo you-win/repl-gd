@@ -5,7 +5,7 @@ class Env:
 	
 	const AdvExp := preload("res://addons/advanced-expression/advanced_expression.gd")
 	
-	const BUILTIN_VARS := {}
+	var BUILTIN_VARS := {}
 	
 	## Variables to be injected into the script on each run
 	## @type: Dictionary<String, Variant>
@@ -134,18 +134,30 @@ class Env:
 				var params = external_script_mappings[script_name][func_name]
 				
 				var builder = ae.add_function(func_name)
-				var param_string_builder := PoolStringArray()
+				var param_string_builder := PackedStringArray()
 				for i in params:
 					builder.add_param(i)
 					param_string_builder.append(i)
 				
+#				builder.add("return __external__[\"%s\"].%s(%s)" % [
+#					script_name, func_name, param_string_builder.join(",")])
 				builder.add("return __external__[\"%s\"].%s(%s)" % [
-					script_name, func_name, param_string_builder.join(",")])
+					script_name, func_name, ",".join(param_string_builder)])
 		
 		# Must be done _before_ compiling the script
 		for dict in [BUILTIN_VARS, variables]:
 			for key in dict.keys():
-				ae.add_variable(key, "null")
+				var val = dict[key]
+				var type = ""
+				var value = "null"
+				match typeof(val):
+					TYPE_DICTIONARY:
+						type = ": Dictionary"
+						value = "{}"
+					TYPE_ARRAY:
+						type = ": Array"
+						value = "[]"
+				ae.add_variable("%s%s" % [key, type], value)
 		
 		var err: int = ae.compile()
 		if err != OK:
@@ -171,8 +183,11 @@ class Env:
 				TYPE_OBJECT:
 					printerr("Unable to convert object to text")
 					text = "null"
-				TYPE_ARRAY, TYPE_COLOR_ARRAY, TYPE_INT_ARRAY, TYPE_RAW_ARRAY, TYPE_REAL_ARRAY, \
-						TYPE_STRING_ARRAY, TYPE_VECTOR2_ARRAY, TYPE_VECTOR3_ARRAY:
+				TYPE_ARRAY, TYPE_PACKED_COLOR_ARRAY, TYPE_PACKED_INT32_ARRAY, \
+						TYPE_PACKED_INT64_ARRAY, TYPE_PACKED_BYTE_ARRAY, \
+						TYPE_PACKED_FLOAT32_ARRAY, TYPE_PACKED_FLOAT64_ARRAY, \
+						TYPE_PACKED_STRING_ARRAY, TYPE_PACKED_VECTOR2_ARRAY, \
+						TYPE_PACKED_VECTOR3_ARRAY:
 					printerr("Unable to convert array to text")
 					text = "[]"
 				TYPE_DICTIONARY:
@@ -194,7 +209,7 @@ class Env:
 						val.z,
 						val.d
 					]
-				TYPE_QUAT:
+				TYPE_QUATERNION:
 					text = "Quat(%d, %d, %d, %d)" % [
 						val.x,
 						val.y,
@@ -211,7 +226,7 @@ class Env:
 					text = "RID(%d)" % val.get_id()
 				TYPE_STRING:
 					text = "\"%s\"" % val
-				TYPE_TRANSFORM:
+				TYPE_TRANSFORM3D:
 					text = "Transform(%s, %s)" % [
 						_export_basis(val.basis),
 						_export_vector3(val.origin)
@@ -285,21 +300,21 @@ enum OptionMenuType {
 }
 
 const TREE_COL: int = 0
-onready var tree := $Body/State/Tree as Tree
+@onready var tree := $Body/State/Tree as Tree
 const INITIAL_PAGE := "General"
 
-onready var var_count := $Body/State/General/List/VarCount/Value as Label
-onready var func_count := $Body/State/General/List/FuncCount/Value as Label
+@onready var var_count := $Body/State/General/List/VarCount/Value as Label
+@onready var func_count := $Body/State/General/List/FuncCount/Value as Label
 
-onready var var_list := $Body/State/Variables/List/VarList as VBoxContainer
-onready var func_list := $Body/State/Functions/List/FuncList as VBoxContainer
+@onready var var_list := $Body/State/Variables/List/VarList as VBoxContainer
+@onready var func_list := $Body/State/Functions/List/FuncList as VBoxContainer
 
-onready var scene := $Body/State/Scene/Scene as Tree
+@onready var scene := $Body/State/Scene/Scene as Tree
 
-onready var notes := $Body/State/Notes/Notes as TextEdit
+@onready var notes := $Body/State/Notes/Notes as TextEdit
 
-onready var output := $Body/IO/Output as TextEdit
-onready var input := $Body/IO/Inputs/Input as TextEdit
+@onready var output := $Body/IO/Output as TextEdit
+@onready var input := $Body/IO/Inputs/Input as TextEdit
 
 const MAX_HISTORY: int = 100
 var history_pointer: int = 0
@@ -321,17 +336,19 @@ func _ready() -> void:
 	file_popup.add_item("Load gdscript")
 	file_popup.add_separator()
 	file_popup.add_item("Reset")
-	if not Engine.editor_hint:
+	if not Engine.is_editor_hint():
 		file_popup.add_separator()
 		file_popup.add_item("Quit")
-	file_popup.connect("index_pressed", self, "_on_popup_index_pressed",
-		[OptionMenuType.FILE, file_popup])
+#	file_popup.connect("index_pressed", self, "_on_popup_index_pressed",
+#		[OptionMenuType.FILE, file_popup])
+	file_popup.index_pressed.connect(_on_popup_index_pressed.bind(OptionMenuType.FILE, file_popup))
 	
 	var help_popup: PopupMenu = $Options/Help.get_popup()
 	help_popup.add_item("GitHub repo")
 	help_popup.add_item("About")
-	help_popup.connect("index_pressed", self, "_on_popup_index_pressed",
-		[OptionMenuType.HELP, help_popup])
+#	help_popup.connect("index_pressed", self, "_on_popup_index_pressed",
+#		[OptionMenuType.HELP, help_popup])
+	help_popup.index_pressed.connect(_on_popup_index_pressed.bind(OptionMenuType.HELP, help_popup))
 	
 	var pages := {}
 	var state_container := $Body/State as VSplitContainer
@@ -349,16 +366,20 @@ func _ready() -> void:
 		if page == INITIAL_PAGE:
 			item.select(TREE_COL)
 	
-	tree.connect("item_selected", self, "_on_tree_item_selected", [pages])
+#	tree.connect("item_selected", self, "_on_tree_item_selected", [pages])
+	tree.item_selected.connect(_on_tree_item_selected.bind(pages))
 	
 	_set_half_size_split(state_container, false)
 	_set_half_size_split($Body, true, 0.3)
 	_set_half_size_split($Body/IO, false, 0.7)
 	
-	input.connect("gui_input", self, "_on_input_gui_input")
-	$Body/IO/Inputs/Send.connect("pressed", self, "_on_input_submit")
+#	input.connect("gui_input", self, "_on_input_gui_input")
+	input.gui_input.connect(_on_input_gui_input)
+#	$Body/IO/Inputs/Send.connect("pressed", self, "_on_input_submit")
+	$Body/IO/Inputs/Send.pressed.connect(_on_input_submit)
 	
-	$Body/State/Notes/Options/Save.connect("pressed", self, "_on_save_notes")
+#	$Body/State/Notes/Options/Save.connect("pressed", self, "_on_save_notes")
+	$Body/State/Notes/Options/Save.pressed.connect(_on_save_notes)
 	
 	_reset_repl()
 	
@@ -421,9 +442,12 @@ func _on_input_gui_input(ie: InputEvent) -> void:
 	if not ie.pressed:
 		return
 	
-	if ie.control:
-		match ie.scancode:
+	if ie.ctrl_pressed:
+		match ie.keycode:
 			KEY_ENTER: # Submit code
+				input.text = input.text.trim_suffix("\n")
+				# TODO timings in Godot 4 seem to be different
+				await get_tree().process_frame
 				input.text = input.text.trim_suffix("\n")
 				_on_input_submit()
 			KEY_UP: # Previous history
@@ -442,7 +466,7 @@ func _on_input_gui_input(ie: InputEvent) -> void:
 					history_pointer -= 1
 
 func _on_input_submit() -> void:
-	if input.text.strip_edges().empty():
+	if input.text.strip_edges().is_empty():
 		return
 	
 	_add_history(input.text)
@@ -451,11 +475,11 @@ func _on_input_submit() -> void:
 	
 	var ae := AdvExp.new()
 	
-	var code: PoolStringArray = input.text.split("\n")
+	var code: PackedStringArray = input.text.split("\n")
 	if code.size() == 1:
 		match code[0]:
 			"exit":
-				if not Engine.editor_hint:
+				if not Engine.is_editor_hint():
 					get_tree().quit()
 				else:
 					_add_output("Ignoring `exit` in editor plugin")
@@ -476,25 +500,28 @@ func _on_input_submit() -> void:
 					ae.add(i)
 	else:
 		if code[0].begins_with("func"):
-			var func_header: PoolStringArray = code[0].split(" ", false, 1)
+			var func_header: PackedStringArray = code[0].split(" ", false, 1)
 			if func_header.size() < 2:
 				_add_output("Invalid function definition")
 				_clear_input()
 				return
-			var func_name: PoolStringArray = func_header[1].split("(", false, 1)
+			var func_name: PackedStringArray = func_header[1].split("(", false, 1)
 			if func_name.size() < 2:
 				_add_output("Invalid function definition")
 				_clear_input()
 				return
 			
 			var n: String = func_name[0]
-			env.functions[n] = code.join("\n")
+#			env.functions[n] = code.join("\n")
+			env.functions[n] = "\n".join(code)
 			_on_func_added(n, env.functions[n])
 			
 			ae.add("pass")
 		else:
 			for i in code:
 				ae.add(i)
+	
+	var test = ae.to_string()
 	
 	if env.apply_to_expression(ae) != OK:
 		_add_output("Invalid input")
@@ -510,7 +537,8 @@ func _on_input_submit() -> void:
 #region Property callbacks
 
 func _on_var_added(var_name: String, var_value) -> void:
-	var node := _create_prop_label(var_name, var_value, "_on_var_removed")
+#	var node := _create_prop_label(var_name, var_value, "_on_var_removed")
+	var node := _create_prop_label(var_name, var_value, _on_var_removed)
 	
 	var existing_node = var_list.get_node_or_null(var_name)
 	if existing_node != null:
@@ -524,7 +552,8 @@ func _on_var_removed(control: Node, var_name: String) -> void:
 	_update_ui()
 
 func _on_func_added(func_name: String, func_body: String) -> void:
-	var node := _create_prop_label(func_name, func_body, "_on_func_removed")
+#	var node := _create_prop_label(func_name, func_body, "_on_func_removed")
+	var node := _create_prop_label(func_name, func_body, _on_func_removed)
 	
 	var existing_node = var_list.get_node_or_null(func_name)
 	if existing_node != null:
@@ -542,7 +571,7 @@ func _on_func_removed(control: Node, func_name: String) -> void:
 #region Saving
 
 func _on_save_notes() -> void:
-	_show_save_dialog("_save_file", notes.text)
+	_show_save_dialog(_save_file, notes.text)
 
 func _save_file(path: String, contents: String) -> void:
 	var file := File.new()
@@ -588,13 +617,14 @@ func _load_gdscript(path: String) -> void:
 ## Gets the current time and formats it. All numbers are padded with 0s so they
 ## take up at least 2 spaces
 static func _current_time() -> String:
-	var time: Dictionary = OS.get_time()
+#	var time: Dictionary = OS.get_time()
+	var time: Dictionary = Time.get_time_dict_from_system()
 	
 	return "[%02d:%02d:%02d]" % [time.hour, time.minute, time.second]
 
 ## Utility function for setting SplitContainer offsets
 static func _set_half_size_split(c: SplitContainer, use_x: bool, amount: float = 0.5) -> void:
-	c.split_offset = (c.rect_size.x if use_x else c.rect_size.y) * amount
+	c.split_offset = (c.size.x if use_x else c.size.y) * amount
 
 ## Adds a line to the output. Will append a line containing the current time before
 ## adding the text
@@ -608,7 +638,8 @@ func _reset_repl() -> void:
 	if env != null:
 		env.cleanup()
 	env = Env.new(scene_tree)
-	env.connect("var_added", self, "_on_var_added")
+#	env.connect("var_added", self, "_on_var_added")
+	env.var_added.connect(_on_var_added)
 	
 	_update_ui()
 
@@ -632,7 +663,8 @@ func _add_history(text: String) -> void:
 ## at the history_pointer. Also sets the user's cursor to the end of the line
 func _set_from_history() -> void:
 	input.text = history[history_pointer]
-	input.cursor_set_column(input.get_line(input.cursor_get_line()).length())
+#	input.cursor_set_column(input.get_line(input.cursor_get_line()).length())
+	input.set_caret_column(input.get_line(input.get_caret_line()).length())
 
 ## Creates a func/var label and connects them to a given callback
 ##
@@ -641,7 +673,7 @@ func _set_from_history() -> void:
 ## @param: callback: String - The callback to use for the label
 ##
 ## @return: HBoxContainer - The resulting label
-func _create_prop_label(prop_name: String, value, callback: String) -> HBoxContainer:
+func _create_prop_label(prop_name: String, value, callback: Callable) -> HBoxContainer:
 	var hbox := HBoxContainer.new()
 	hbox.name = prop_name
 	hbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -658,7 +690,8 @@ func _create_prop_label(prop_name: String, value, callback: String) -> HBoxConta
 	
 	var delete_button := Button.new()
 	delete_button.text = "Delete"
-	delete_button.connect("pressed", self, callback, [hbox, prop_name])
+#	delete_button.connect("pressed", self, callback, [hbox, prop_name])
+	delete_button.pressed.connect(callback.bind(hbox, prop_name))
 	
 	hbox.add_child(name_label)
 	hbox.add_child(value_label)
@@ -683,7 +716,7 @@ func _update_ui() -> void:
 ##
 ## @param: root: TreeItem - The root TreeItem. This will not be deleted
 static func _clear_tree(root: TreeItem) -> void:
-	var item := root.get_children()
+	var item := root.get_first_child()
 	while item != null:
 		_clear_tree(item)
 		
@@ -705,14 +738,16 @@ static func _create_tree(tree: Tree, root: TreeItem, node: Node) -> void:
 
 #region Saving
 
-func _show_save_dialog(callback: String, file_contents: String) -> void:
+func _show_save_dialog(callback: Callable, file_contents: String) -> void:
 	var fd := FileDialog.new()
 	fd.access = FileDialog.ACCESS_FILESYSTEM
 	fd.mode = FileDialog.MODE_SAVE_FILE
 	
-	fd.connect("file_selected", self, callback, [file_contents])
+#	fd.connect("file_selected", self, callback, [file_contents])
+	fd.file_selected.connect(callback.bind(file_contents))
 	for i in ["hide", "popup_hide"]:
-		fd.connect(i, self, "_delete_node", [fd])
+#		fd.connect(i, self, "_delete_node", [fd])
+		fd.connect(i, _delete_node.bind(fd))
 	
 	add_child(fd)
 	fd.popup_centered_ratio()
@@ -722,7 +757,8 @@ func _show_accept_dialog(text: String) -> void:
 	ad.dialog_text = text
 	
 	for i in ["hide", "popup_hide"]:
-		ad.connect(i, self, "_delete_node", [ad])
+#		ad.connect(i, self, "_delete_node", [ad])
+		ad.connect(i, _delete_node.bind(ad))
 	
 	add_child(ad)
 	ad.popup_centered()
@@ -730,8 +766,8 @@ func _show_accept_dialog(text: String) -> void:
 func _save_as(path: String = "") -> void:
 	var ae := AdvExp.new()
 	env.export_props(ae)
-	if path.empty():
-		_show_save_dialog("_save_file", ae.to_string())
+	if path.is_empty():
+		_show_save_dialog(_save_file, ae.to_string())
 	else:
 		_save_file(path, ae.to_string())
 
@@ -742,9 +778,11 @@ func _show_load_dialog() -> void:
 	fd.access = FileDialog.ACCESS_FILESYSTEM
 	fd.mode = FileDialog.MODE_OPEN_FILE
 	
-	fd.connect("file_selected", self, "_load_gdscript")
+#	fd.connect("file_selected", self, "_load_gdscript")
+	fd.file_selected.connect(_load_gdscript)
 	for i in ["hide", "popup_hide"]:
-		fd.connect(i, self, "_delete_node", [fd])
+#		fd.connect(i, self, "_delete_node", [fd])
+		fd.connect(i, _delete_node.bind(fd))
 	
 	add_child(fd)
 	fd.popup_centered_ratio()

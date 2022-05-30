@@ -1,6 +1,6 @@
 extends CanvasLayer
 
-onready var repl := $Background/Repl
+@onready var repl := $Background/MarginContainer/Repl
 
 #-----------------------------------------------------------------------------#
 # Builtin functions                                                           #
